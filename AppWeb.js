@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View, TouchableOpacity, Alert, Platform, Modal } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity, Modal, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import CircleTimer from "./components/CircleTimer";
+// Removed DonateButtonWeb import temporarily to fix blank page issue
 
-// This file is for native platforms only (Android/iOS)
-// For web, we use AppWeb.js which is loaded by index.js
+// IMPORTANT: This file is specifically for web platforms
+// It must NOT import @stripe/stripe-react-native or any native modules
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -20,23 +21,7 @@ const TIMER_CONFIGS = {
   longerDoro: { work: 45 * 60, break: 10 * 60, longBreak: 30 * 60, label: "LongerDoro" },
 };
 
-// Only import these on native platforms, not on web
-let StripeProvider = ({ children }) => children; // Default placeholder
-let DonateButton = () => null;  // Empty component
-
-if (Platform.OS !== 'web') {
-  // Dynamically import on native only
-  try {
-    StripeProvider = require('@stripe/stripe-react-native').StripeProvider;
-    DonateButton = require('./components/DonateButton').default;
-  } catch (err) {
-    console.log('Stripe components not available:', err);
-  }
-}
-
-export default function App() {
-  // Replace with your publishable key from Stripe Dashboard
-  const stripePublishableKey = 'pk_test_51HRfptEwEJEe1ZYlMxp1ntZXBTlRZRanpSTKgCuFRdgSJzGbIVyCANyAzSNViRCQtFyIRqikRTfuB4BKBGQXYpri00SsRjWMJP';
+export default function AppWeb() {
   const [activeTab, setActiveTab] = useState("pomodoro");
   const config = TIMER_CONFIGS[activeTab];
 
@@ -239,11 +224,7 @@ export default function App() {
       if (status !== "granted") {
         const res = await Notifications.requestPermissionsAsync();
         if (res.status !== "granted") {
-          if (Platform.OS === "web") {
-            alert("Notifications disabled. Enable notifications to get alerts when a session ends.");
-          } else {
-            Alert.alert("Notifications disabled", "Enable notifications to get alerts when a session ends.");
-          }
+          alert("Notifications disabled. Enable notifications to get alerts when a session ends.");
         }
       }
     } catch (e) {
@@ -304,26 +285,8 @@ export default function App() {
     return infoText;
   }
 
-  // Cross-platform alert method
-  function showAlert(title, message, buttons) {
-    if (Platform.OS === "web") {
-      // For web, we'll use our custom modal dialog
-      setDialogTitle(title);
-      setDialogMessage(message);
-      setDialogActions(buttons);
-      setDialogVisible(true);
-    } else {
-      // For native platforms (iOS, Android), use React Native Alert
-      Alert.alert(title, message, buttons);
-    }
-  }
-
   return (
-    <StripeProvider
-      publishableKey={Platform.OS !== 'web' ? stripePublishableKey : ''}
-      merchantIdentifier={Platform.OS === 'ios' ? "merchant.com.yourcompany.pomopower" : undefined}
-    >
-      <View style={styles.container}>
+    <View style={styles.container}>
       {/* Tab Navigation */}
       <View style={styles.tabContainer}>
         {Object.keys(TIMER_CONFIGS).map((tabKey) => (
@@ -391,46 +354,45 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {/* Donate Button */}
+      {/* Donate Button - Temporarily removed to fix blank page issue */}
       <View style={{ marginTop: 20 }}>
-        <DonateButton />
+        <TouchableOpacity style={{ backgroundColor: "#27ae60", paddingHorizontal: 22, paddingVertical: 12, borderRadius: 10 }}>
+          <Text style={{ color: "#fff", fontWeight: "600" }}>Support Us</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Timer Info */}
       <Text style={styles.hint}>{getTimerInfo()}</Text>
 
       {/* Custom Dialog Modal for Web */}
-      {Platform.OS === "web" && (
-        <Modal
-          visible={dialogVisible}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setDialogVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>{dialogTitle}</Text>
-              <Text style={styles.modalMessage}>{dialogMessage}</Text>
-              <View style={styles.modalButtons}>
-                {dialogActions.map((action, index) => (
-                  <TouchableOpacity 
-                    key={index}
-                    style={[
-                      styles.modalButton,
-                      index === 0 ? styles.modalButtonSecondary : styles.modalButtonPrimary
-                    ]}
-                    onPress={action.onPress}
-                  >
-                    <Text style={styles.modalButtonText}>{action.text}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+      <Modal
+        visible={dialogVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setDialogVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{dialogTitle}</Text>
+            <Text style={styles.modalMessage}>{dialogMessage}</Text>
+            <View style={styles.modalButtons}>
+              {dialogActions.map((action, index) => (
+                <TouchableOpacity 
+                  key={index}
+                  style={[
+                    styles.modalButton,
+                    index === 0 ? styles.modalButtonSecondary : styles.modalButtonPrimary
+                  ]}
+                  onPress={action.onPress}
+                >
+                  <Text style={styles.modalButtonText}>{action.text}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
-        </Modal>
-      )}
-      </View>
-    </StripeProvider>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
