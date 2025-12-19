@@ -8,7 +8,7 @@ const SimpleApp = () => {
   // Timer configurations for each tab
   const TIMER_CONFIGS = {
     pomodoro: { work: 25 * 60, break: 5 * 60, longBreak: 15 * 60, label: "PomoDoro" },
-    shorterDoro: { work: 15 * 60, break: 3 * 60, longBreak: 10 * 60, label: "ShorterDoro" },
+    shorterDoro: { work: 5, break: 5, longBreak: 5, label: "ShorterDoro" },
     longerDoro: { work: 45 * 60, break: 10 * 60, longBreak: 30 * 60, label: "LongerDoro" },
   };
 
@@ -102,9 +102,45 @@ const SimpleApp = () => {
     const s = (sec % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
   }
+
+  // Play a notification sound using Web Audio API
+  function playNotificationSound() {
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Create a simple beep sound with three tones
+      const now = audioContext.currentTime;
+      const frequency = 800; // Hz
+      const duration = 0.3; // seconds
+      
+      // Create oscillator
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = frequency;
+      oscillator.type = 'square';
+      
+      // Play three quick beeps
+      for (let i = 0; i < 3; i++) {
+        const startTime = now + (i * duration * 1.5);
+        gainNode.gain.setValueAtTime(0.3, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+      }
+      
+      oscillator.start(now);
+      oscillator.stop(now + duration * 4.5);
+    } catch (e) {
+      console.log("Sound notification not available:", e);
+    }
+  }
   
   // Show dialog at the end of a session
   function showTimerEndDialog() {
+    // Play notification sound
+    playNotificationSound();
     if (mode === "work") {
       // After work session
       setDialogTitle("Work Session Complete!");
@@ -219,6 +255,8 @@ const SimpleApp = () => {
 
   return (
     <View style={styles.container}>
+      <Text style={styles.title}>PomoPower</Text>
+      
       {/* Tab Navigation */}
       <View style={styles.tabContainer}>
         {Object.keys(TIMER_CONFIGS).map((tabKey) => (
@@ -241,8 +279,9 @@ const SimpleApp = () => {
           </TouchableOpacity>
         ))}
       </View>
-
-      <Text style={styles.title}>PomoPower</Text>
+      
+      <View style={{ height: 65 }} />
+      
       <Text style={styles.mode}>
         {mode === "work" 
           ? "FOCUS" 
@@ -255,7 +294,7 @@ const SimpleApp = () => {
         {isLongBreak ? " - Long Break" : ""}
       </Text>
       
-      <View style={{ height: 30 }} />
+      <View style={{ height: 15 }} />
 
       <View style={{ justifyContent: "center", alignItems: "center" }}>
         <View style={{ justifyContent: "center", alignItems: "center" }}>
@@ -340,12 +379,14 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: "#fff", 
     alignItems: "center", 
-    justifyContent: "center", 
-    padding: 24 
+    justifyContent: "flex-start", 
+    padding: 24,
+    paddingTop: 20
   },
   tabContainer: { 
     flexDirection: "row", 
     marginBottom: 20, 
+    marginTop: 10,
     backgroundColor: "#f0f0f0", 
     borderRadius: 12, 
     padding: 4,

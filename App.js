@@ -318,6 +318,16 @@ export default function App() {
     }
   }
 
+  // Set document title based on active tab
+  useEffect(() => {
+    const tabLabel = TIMER_CONFIGS[activeTab].label;
+    const sessionType = mode === "work" ? "Focus" : isLongBreak ? "Long Break" : "Break";
+    const sessionCountText = workSessionCount > 0 ? ` - Session ${workSessionCount}` : "";
+    
+    // Update the document title
+    document.title = `PomoPower | ${tabLabel} - ${sessionType}${sessionCountText}`;
+  }, [activeTab, mode, workSessionCount]);
+
   return (
     <StripeProvider
       publishableKey={Platform.OS !== 'web' ? stripePublishableKey : ''}
@@ -325,6 +335,9 @@ export default function App() {
     >
       <View style={styles.container}>
       {/* Tab Navigation */}
+
+      <Text style={styles.title}>PomoPower</Text>
+      
       <View style={styles.tabContainer}>
         {Object.keys(TIMER_CONFIGS).map((tabKey) => (
           <TouchableOpacity
@@ -347,7 +360,7 @@ export default function App() {
         ))}
       </View>
 
-      <Text style={styles.title}>PomoPower</Text>
+      
       <Text style={styles.mode}>
         {mode === "work" 
           ? "FOCUS" 
@@ -461,7 +474,7 @@ const styles = StyleSheet.create({
   activeTabText: { 
     color: "#fff",
   },
-  title: { fontSize: 28, fontWeight: "700", marginBottom: 8 },
+  title: { fontSize: 28, fontWeight: "700", marginBottom: 8, order: 1 },
   mode: { color: "#666", marginBottom: 6, letterSpacing: 1.5 },
   sessionCount: { 
     color: "#888", 
