@@ -17,7 +17,7 @@ Notifications.setNotificationHandler({
 // Timer configurations for each tab, now with long break
 const TIMER_CONFIGS = {
   pomodoro: { work: 25 * 60, break: 5 * 60, longBreak: 15 * 60, label: "PomoDoro" },
-  shorterDoro: { work: 5, break: 5, longBreak: 5, label: "ShorterDoro" },
+  shorterDoro: { work: 15 * 60, break: 3 * 60, longBreak: 5 * 60, label: "ShorterDoro" },
   longerDoro: { work: 45 * 60, break: 10 * 60, longBreak: 30 * 60, label: "LongerDoro" },
 };
 
@@ -28,8 +28,8 @@ export default function AppWeb() {
   // Store timer state for each tab
   const [tabTimers, setTabTimers] = useState({
     pomodoro: { timeLeft: TIMER_CONFIGS.pomodoro.work, mode: "work", workSessionCount: 0 },
-    shorterDoro: { timeLeft: TIMER_CONFIGS.shorterDoro.work, mode: "work", workSessionCount: 0 },
-    longerDoro: { timeLeft: TIMER_CONFIGS.longerDoro.work, mode: "work", workSessionCount: 0 },
+    shorterDoro: { timeLeft: 15 * 60, mode: "work", workSessionCount: 0 },
+    longerDoro: { timeLeft: 45 * 60, mode: "work", workSessionCount: 0 },
   });
   
   // Use the active tab's timer values
@@ -49,7 +49,21 @@ export default function AppWeb() {
   useEffect(() => {
     // hide splash after first render
     SplashScreen.hideAsync().catch(() => {});
-  }, []);
+    
+    // Add visibility change listener to pause timer when user leaves the app
+    const handleVisibilityChange = () => {
+      if (document.hidden && running) {
+        // User switched away from the app and timer is running - pause it
+        setRunning(false);
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [running]);
 
   // Handle tab changes - update UI with stored tab timer values
   useEffect(() => {
@@ -288,6 +302,8 @@ export default function AppWeb() {
   return (
     <View style={styles.container}>
       {/* Tab Navigation */}
+      <Text style={styles.title}>PomoPower</Text>
+
       <View style={styles.tabContainer}>
         {Object.keys(TIMER_CONFIGS).map((tabKey) => (
           <TouchableOpacity
@@ -310,7 +326,7 @@ export default function AppWeb() {
         ))}
       </View>
 
-      <Text style={styles.title}>PomoPower</Text>
+      
       <Text style={styles.mode}>
         {mode === "work" 
           ? "FOCUS" 
@@ -404,8 +420,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f0f0", 
     borderRadius: 12, 
     padding: 4,
-    position: "absolute",
-    top: 60,
+    // position: "absolute",
+    // top: 60,
   },
   tab: { 
     paddingHorizontal: 16, 

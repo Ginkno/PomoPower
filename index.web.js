@@ -8,18 +8,25 @@ const SimpleApp = () => {
   // Timer configurations for each tab
   const TIMER_CONFIGS = {
     pomodoro: { work: 25 * 60, break: 5 * 60, longBreak: 15 * 60, label: "PomoDoro" },
-    shorterDoro: { work: 5, break: 5, longBreak: 5, label: "ShorterDoro" },
+    shorterDoro: { work: 15 * 60, break: 3 * 60, longBreak: 5 * 60, label: "ShorterDoro" },
     longerDoro: { work: 45 * 60, break: 10 * 60, longBreak: 30 * 60, label: "LongerDoro" },
   };
 
   const [activeTab, setActiveTab] = useState("pomodoro");
   const currentConfig = TIMER_CONFIGS[activeTab];
-  
-  // Timer state
-  const [timeLeft, setTimeLeft] = useState(currentConfig.work);
-  const [mode, setMode] = useState("work");
-  const [workSessionCount, setWorkSessionCount] = useState(1); // Starting from 1 instead of 0
-  const [completedCycles, setCompletedCycles] = useState(0); // Track completed cycles
+
+  // Store timer state for each tab independently
+  const [tabTimers, setTabTimers] = useState({
+    pomodoro: { timeLeft: TIMER_CONFIGS.pomodoro.work, mode: "work", workSessionCount: 1, completedCycles: 0 },
+    shorterDoro: { timeLeft: TIMER_CONFIGS.shorterDoro.work, mode: "work", workSessionCount: 1, completedCycles: 0 },
+    longerDoro: { timeLeft: TIMER_CONFIGS.longerDoro.work, mode: "work", workSessionCount: 1, completedCycles: 0 },
+  });
+
+  // Use the active tab's timer values
+  const [timeLeft, setTimeLeft] = useState(tabTimers[activeTab].timeLeft);
+  const [mode, setMode] = useState(tabTimers[activeTab].mode);
+  const [workSessionCount, setWorkSessionCount] = useState(tabTimers[activeTab].workSessionCount);
+  const [completedCycles, setCompletedCycles] = useState(tabTimers[activeTab].completedCycles);
   const [running, setRunning] = useState(false);
   const intervalRef = useRef(null);
   
@@ -45,8 +52,9 @@ const SimpleApp = () => {
   // Determine if the current break is a long break
   const isLongBreak = mode === "break" && workSessionCount % 4 === 0 && workSessionCount > 0;
 
-  // Effect for tab changes
+  // Handle tab changes - load the saved state for that tab
   useEffect(() => {
+    // Stop the timer if it's running when changing tabs
     if (running) {
       setRunning(false);
       if (intervalRef.current) {
@@ -54,9 +62,28 @@ const SimpleApp = () => {
       }
     }
     
-    setTimeLeft(TIMER_CONFIGS[activeTab].work);
-    setMode("work");
+    // Load the saved state for the new tab
+    setTimeLeft(tabTimers[activeTab].timeLeft);
+    setMode(tabTimers[activeTab].mode);
+    setWorkSessionCount(tabTimers[activeTab].workSessionCount);
+    setCompletedCycles(tabTimers[activeTab].completedCycles);
   }, [activeTab]);
+
+  // Visibility change listener to pause timer when user leaves the app
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && running) {
+        // User switched away from the app and timer is running - pause it
+        setRunning(false);
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [running]);
 
   // Timer effect
   useEffect(() => {
@@ -85,6 +112,14 @@ const SimpleApp = () => {
     };
   }, [running, mode, currentConfig]);
 
+  // Update stored tab timer values whenever time, mode or session count changes
+  useEffect(() => {
+    setTabTimers(prev => ({
+      ...prev,
+      [activeTab]: { timeLeft, mode, workSessionCount, completedCycles }
+    }));
+  }, [timeLeft, mode, workSessionCount, completedCycles, activeTab]);
+
   function toggleStartPause() {
     setRunning(r => !r);
   }
@@ -93,8 +128,19 @@ const SimpleApp = () => {
     setRunning(false);
     setMode("work");
     setTimeLeft(currentConfig.work);
-    setWorkSessionCount(1); // Reset to 1 instead of 0
-    setCompletedCycles(0);  // Reset completed cycles
+    setWorkSessionCount(1);
+    setCompletedCycles(0);
+    
+    // Update the tab timers state to persist the reset
+    setTabTimers(prev => ({
+      ...prev,
+      [activeTab]: {
+        timeLeft: currentConfig.work,
+        mode: "work",
+        workSessionCount: 1,
+        completedCycles: 0
+      }
+    }));
   }
 
   function formatTime(sec) {
@@ -244,10 +290,10 @@ const SimpleApp = () => {
     const breakMin = Math.floor(currentConfig.break / 60);
     const longBreakMin = Math.floor(currentConfig.longBreak / 60);
     
-    let infoText = `${currentConfig.label}: ${workMin}min work / ${breakMin}min break / ${longBreakMin}min long break`;
+    let infoText = `      ${workMin} min work \n      ${breakMin} min break \n  ${longBreakMin} min long break \n`;
     
     if (workSessionCount > 0) {
-      infoText += ` (Session ${workSessionCount})`;
+      infoText += `        (Session ${workSessionCount})`;
     }
     
     return infoText;
@@ -391,7 +437,7 @@ const styles = StyleSheet.create({
     borderRadius: 12, 
     padding: 4,
     position: "absolute",
-    top: 60,
+    top: 120,
   },
   tab: { 
     paddingHorizontal: 16, 
@@ -412,12 +458,14 @@ const styles = StyleSheet.create({
   title: { 
     fontSize: 28, 
     fontWeight: "700", 
-    marginBottom: 8 
+    marginBottom: 8,
+    marginTop: 60
   },
   mode: { 
     color: "#666", 
     marginBottom: 6, 
-    letterSpacing: 1.5 
+    letterSpacing: 1.5,
+    top: 5
   },
   sessionCount: { 
     color: "#888", 
@@ -449,7 +497,7 @@ const styles = StyleSheet.create({
     fontWeight: "600" 
   },
   hint: { 
-    marginTop: 26, 
+    marginTop: 36, 
     color: "#444" 
   },
   donateButton: {
