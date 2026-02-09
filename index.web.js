@@ -378,9 +378,16 @@ const SimpleApp = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Simple support button without Stripe */}
+      {/* Support button with Stripe redirect */}
       <View style={{ marginTop: 20 }}>
-        <TouchableOpacity style={styles.donateButton}>
+        <TouchableOpacity 
+          style={styles.donateButton}
+          onPress={() => {
+            if (typeof window !== 'undefined') {
+              window.open('https://donate.stripe.com/test_7sY7sLaOlbHy9i12B6cfK02', '_blank');
+            }
+          }}
+        >
           <Text style={styles.donateButtonText}>Support Us</Text>
         </TouchableOpacity>
       </View>

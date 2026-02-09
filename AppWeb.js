@@ -370,9 +370,12 @@ export default function AppWeb() {
         </TouchableOpacity>
       </View>
 
-      {/* Donate Button - Temporarily removed to fix blank page issue */}
+      {/* Donate Button */}
       <View style={{ marginTop: 20 }}>
-        <TouchableOpacity style={{ backgroundColor: "#27ae60", paddingHorizontal: 22, paddingVertical: 12, borderRadius: 10 }}>
+        <TouchableOpacity 
+          style={{ backgroundColor: "#27ae60", paddingHorizontal: 22, paddingVertical: 12, borderRadius: 10 }}
+          onPress={() => window.open('https://donate.stripe.com/test_5kQbJ1e0x8vm65P7VqcfK01', '_blank')}
+        >
           <Text style={{ color: "#fff", fontWeight: "600" }}>Support Us</Text>
         </TouchableOpacity>
       </View>
