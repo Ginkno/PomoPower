@@ -84,7 +84,7 @@ export default function DonateButton() {
     setAmount(selectedAmount);
   };
 
-  // Custom modal dialog for web and custom Alert for native
+  // Custom modal dialog
   const showDonationModal = () => {
     setModalVisible(true);
   };
@@ -280,3 +280,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+

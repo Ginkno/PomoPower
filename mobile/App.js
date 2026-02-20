@@ -1,35 +1,52 @@
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View, TouchableOpacity, Modal, Platform } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity, Alert, Platform, Modal } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
-import CircleTimer from "./components/CircleTimer";
-// Removed DonateButtonWeb import temporarily to fix blank page issue
+import CircleTimer from "../components/CircleTimer";
 
-// IMPORTANT: This file is specifically for web platforms
-// It must NOT import @stripe/stripe-react-native or any native modules
+// This file is for native platforms only (Android/iOS)
+// Web-specific implementation lives in web/AppWeb.js
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: true }),
+  handleNotification: async () => ({ shouldShowBanner: true, shouldPlaySound: true }),
 });
+
+
 
 // Timer configurations for each tab, now with long break
 const TIMER_CONFIGS = {
   pomodoro: { work: 25 * 60, break: 5 * 60, longBreak: 15 * 60, label: "PomoDoro" },
-  shorterDoro: { work: 15 * 60, break: 3 * 60, longBreak: 5 * 60, label: "ShorterDoro" },
+  shorterDoro: { work: 10, break: 3, longBreak: 5, label: "ShorterDoro" },
   longerDoro: { work: 45 * 60, break: 10 * 60, longBreak: 30 * 60, label: "LongerDoro" },
 };
 
-export default function AppWeb() {
+// Only import these on native platforms, not on web
+let StripeProvider = ({ children }) => children; // Default placeholder
+let DonateButton = () => null;  // Empty component
+
+if (Platform.OS !== 'web') {
+  // Dynamically import on native only
+  try {
+    StripeProvider = require('@stripe/stripe-react-native').StripeProvider;
+    DonateButton = require('./components/DonateButton').default;
+  } catch (err) {
+    console.log('Stripe components not available:', err);
+  }
+}
+
+export default function App() {
+  // Replace with your publishable key from Stripe Dashboard
+  const stripePublishableKey = 'pk_test_51HRfptEwEJEe1ZYlMxp1ntZXBTlRZRanpSTKgCuFRdgSJzGbIVyCANyAzSNViRCQtFyIRqikRTfuB4BKBGQXYpri00SsRjWMJP';
   const [activeTab, setActiveTab] = useState("pomodoro");
   const config = TIMER_CONFIGS[activeTab];
 
   // Store timer state for each tab
   const [tabTimers, setTabTimers] = useState({
-    pomodoro: { timeLeft: TIMER_CONFIGS.pomodoro.work, mode: "work", workSessionCount: 0 },
-    shorterDoro: { timeLeft: 15 * 60, mode: "work", workSessionCount: 0 },
-    longerDoro: { timeLeft: 45 * 60, mode: "work", workSessionCount: 0 },
+    pomodoro: { timeLeft: TIMER_CONFIGS.pomodoro.work, mode: "work", workSessionCount: 1 },
+    shorterDoro: { timeLeft: 10, mode: "work", workSessionCount: 1 },
+    longerDoro: { timeLeft: 45 * 60, mode: "work", workSessionCount: 1 },
   });
   
   // Use the active tab's timer values
@@ -49,21 +66,7 @@ export default function AppWeb() {
   useEffect(() => {
     // hide splash after first render
     SplashScreen.hideAsync().catch(() => {});
-    
-    // Add visibility change listener to pause timer when user leaves the app
-    const handleVisibilityChange = () => {
-      if (document.hidden && running) {
-        // User switched away from the app and timer is running - pause it
-        setRunning(false);
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [running]);
+  }, []);
 
   // Handle tab changes - update UI with stored tab timer values
   useEffect(() => {
@@ -238,7 +241,11 @@ export default function AppWeb() {
       if (status !== "granted") {
         const res = await Notifications.requestPermissionsAsync();
         if (res.status !== "granted") {
-          alert("Notifications disabled. Enable notifications to get alerts when a session ends.");
+          if (Platform.OS === "web") {
+            alert("Notifications disabled. Enable notifications to get alerts when a session ends.");
+          } else {
+            Alert.alert("Notifications disabled", "Enable notifications to get alerts when a session ends.");
+          }
         }
       }
     } catch (e) {
@@ -286,10 +293,8 @@ export default function AppWeb() {
     const breakMin = Math.floor(currentConfig.break / 60);
     const longBreakMin = Math.floor(currentConfig.longBreak / 60);
     
-    let infoText = `${currentConfig.label}: ${workMin}min work / ${breakMin}min break`;
+    let infoText = `   ${currentConfig.label} \n   ${workMin}min work / ${breakMin}min break / ${longBreakMin}min long break`;
     
-    // Add long break info
-    infoText += ` / ${longBreakMin}min long break`;
     
     // Add current session count
     if (workSessionCount > 0) {
@@ -299,11 +304,30 @@ export default function AppWeb() {
     return infoText;
   }
 
-  return (
-    <View style={styles.container}>
-      {/* Tab Navigation */}
-      <Text style={styles.title}>PomoPower</Text>
+  // Cross-platform alert method
+  function showAlert(title, message, buttons) {
+    if (Platform.OS === "web") {
+      // For web, we'll use our custom modal dialog
+      setDialogTitle(title);
+      setDialogMessage(message);
+      setDialogActions(buttons);
+      setDialogVisible(true);
+    } else {
+      // For native platforms (iOS, Android), use React Native Alert
+      Alert.alert(title, message, buttons);
+    }
+  }
 
+  return (
+    <StripeProvider
+      publishableKey={Platform.OS !== 'web' ? stripePublishableKey : ''}
+      merchantIdentifier={Platform.OS === 'ios' ? "merchant.com.yourcompany.pomopower" : undefined}
+    >
+      <View style={styles.container}>
+      {/* Tab Navigation */}
+
+      <Text style={styles.title}>PomoPower</Text>
+      
       <View style={styles.tabContainer}>
         {Object.keys(TIMER_CONFIGS).map((tabKey) => (
           <TouchableOpacity
@@ -372,59 +396,57 @@ export default function AppWeb() {
 
       {/* Donate Button */}
       <View style={{ marginTop: 20 }}>
-        <TouchableOpacity 
-          style={{ backgroundColor: "#27ae60", paddingHorizontal: 22, paddingVertical: 12, borderRadius: 10 }}
-          onPress={() => window.open('https://donate.stripe.com/test_7sY7sLaOlbHy9i12B6cfK02', '_blank')}
-        >
-          <Text style={{ color: "#fff", fontWeight: "600" }}>Support Us</Text>
-        </TouchableOpacity>
+        <DonateButton />
       </View>
 
       {/* Timer Info */}
       <Text style={styles.hint}>{getTimerInfo()}</Text>
 
       {/* Custom Dialog Modal for Web */}
-      <Modal
-        visible={dialogVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setDialogVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{dialogTitle}</Text>
-            <Text style={styles.modalMessage}>{dialogMessage}</Text>
-            <View style={styles.modalButtons}>
-              {dialogActions.map((action, index) => (
-                <TouchableOpacity 
-                  key={index}
-                  style={[
-                    styles.modalButton,
-                    index === 0 ? styles.modalButtonSecondary : styles.modalButtonPrimary
-                  ]}
-                  onPress={action.onPress}
-                >
-                  <Text style={styles.modalButtonText}>{action.text}</Text>
-                </TouchableOpacity>
-              ))}
+      {Platform.OS === "web" && (
+        <Modal
+          visible={dialogVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setDialogVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>{dialogTitle}</Text>
+              <Text style={styles.modalMessage}>{dialogMessage}</Text>
+              <View style={styles.modalButtons}>
+                {dialogActions.map((action, index) => (
+                  <TouchableOpacity 
+                    key={index}
+                    style={[
+                      styles.modalButton,
+                      index === 0 ? styles.modalButtonSecondary : styles.modalButtonPrimary
+                    ]}
+                    onPress={action.onPress}
+                  >
+                    <Text style={styles.modalButtonText}>{action.text}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
-    </View>
+        </Modal>
+      )}
+      </View>
+    </StripeProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: 24 },
+  container: { flex: 1, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: 24, top: -10 },
   tabContainer: { 
     flexDirection: "row", 
     marginBottom: 20, 
     backgroundColor: "#f0f0f0", 
     borderRadius: 12, 
     padding: 4,
-    // position: "absolute",
-    // top: 60,
+    position: "absolute",
+    top: 60,
   },
   tab: { 
     paddingHorizontal: 16, 
@@ -442,7 +464,7 @@ const styles = StyleSheet.create({
   activeTabText: { 
     color: "#fff",
   },
-  title: { fontSize: 28, fontWeight: "700", marginBottom: 8 },
+  title: { fontSize: 28, fontWeight: "700", marginBottom: 8, order: 1, marginTop: 60 },
   mode: { color: "#666", marginBottom: 6, letterSpacing: 1.5 },
   sessionCount: { 
     color: "#888", 
@@ -454,7 +476,7 @@ const styles = StyleSheet.create({
   button: { backgroundColor: "#1e90ff", paddingHorizontal: 22, paddingVertical: 12, borderRadius: 10, marginHorizontal: 8 },
   secondary: { backgroundColor: "#444" },
   buttonText: { color: "#fff", fontWeight: "600" },
-  hint: { marginTop: 26, color: "#444" },
+  hint: { marginTop: 15, color: "#444" },
   
   // Modal styles for web
   modalOverlay: {

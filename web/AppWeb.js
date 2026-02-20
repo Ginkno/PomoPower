@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View, TouchableOpacity, Alert, Platform, Modal } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity, Modal, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
-import CircleTimer from "./components/CircleTimer";
-
-// This file is for native platforms only (Android/iOS)
-// For web, we use AppWeb.js which is loaded by index.js
+import CircleTimer from "../components/CircleTimer";
+// Removed DonateButtonWeb import temporarily to fix blank page issue
+//
+// IMPORTANT: This file is specifically for web platforms
+// It must NOT import @stripe/stripe-react-native or any native modules
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -16,35 +17,19 @@ Notifications.setNotificationHandler({
 // Timer configurations for each tab, now with long break
 const TIMER_CONFIGS = {
   pomodoro: { work: 25 * 60, break: 5 * 60, longBreak: 15 * 60, label: "PomoDoro" },
-  shorterDoro: { work: 5, break: 5, longBreak: 5, label: "ShorterDoro" },
+  shorterDoro: { work: 15 * 60, break: 3 * 60, longBreak: 5 * 60, label: "ShorterDoro" },
   longerDoro: { work: 45 * 60, break: 10 * 60, longBreak: 30 * 60, label: "LongerDoro" },
 };
 
-// Only import these on native platforms, not on web
-let StripeProvider = ({ children }) => children; // Default placeholder
-let DonateButton = () => null;  // Empty component
-
-if (Platform.OS !== 'web') {
-  // Dynamically import on native only
-  try {
-    StripeProvider = require('@stripe/stripe-react-native').StripeProvider;
-    DonateButton = require('./components/DonateButton').default;
-  } catch (err) {
-    console.log('Stripe components not available:', err);
-  }
-}
-
-export default function App() {
-  // Replace with your publishable key from Stripe Dashboard
-  const stripePublishableKey = 'pk_test_51HRfptEwEJEe1ZYlMxp1ntZXBTlRZRanpSTKgCuFRdgSJzGbIVyCANyAzSNViRCQtFyIRqikRTfuB4BKBGQXYpri00SsRjWMJP';
+export default function AppWeb() {
   const [activeTab, setActiveTab] = useState("pomodoro");
   const config = TIMER_CONFIGS[activeTab];
 
   // Store timer state for each tab
   const [tabTimers, setTabTimers] = useState({
     pomodoro: { timeLeft: TIMER_CONFIGS.pomodoro.work, mode: "work", workSessionCount: 0 },
-    shorterDoro: { timeLeft: TIMER_CONFIGS.shorterDoro.work, mode: "work", workSessionCount: 0 },
-    longerDoro: { timeLeft: TIMER_CONFIGS.longerDoro.work, mode: "work", workSessionCount: 0 },
+    shorterDoro: { timeLeft: 15 * 60, mode: "work", workSessionCount: 0 },
+    longerDoro: { timeLeft: 45 * 60, mode: "work", workSessionCount: 0 },
   });
   
   // Use the active tab's timer values
@@ -64,7 +49,21 @@ export default function App() {
   useEffect(() => {
     // hide splash after first render
     SplashScreen.hideAsync().catch(() => {});
-  }, []);
+    
+    // Add visibility change listener to pause timer when user leaves the app
+    const handleVisibilityChange = () => {
+      if (document.hidden && running) {
+        // User switched away from the app and timer is running - pause it
+        setRunning(false);
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [running]);
 
   // Handle tab changes - update UI with stored tab timer values
   useEffect(() => {
@@ -239,11 +238,7 @@ export default function App() {
       if (status !== "granted") {
         const res = await Notifications.requestPermissionsAsync();
         if (res.status !== "granted") {
-          if (Platform.OS === "web") {
-            alert("Notifications disabled. Enable notifications to get alerts when a session ends.");
-          } else {
-            Alert.alert("Notifications disabled", "Enable notifications to get alerts when a session ends.");
-          }
+          alert("Notifications disabled. Enable notifications to get alerts when a session ends.");
         }
       }
     } catch (e) {
@@ -304,40 +299,11 @@ export default function App() {
     return infoText;
   }
 
-  // Cross-platform alert method
-  function showAlert(title, message, buttons) {
-    if (Platform.OS === "web") {
-      // For web, we'll use our custom modal dialog
-      setDialogTitle(title);
-      setDialogMessage(message);
-      setDialogActions(buttons);
-      setDialogVisible(true);
-    } else {
-      // For native platforms (iOS, Android), use React Native Alert
-      Alert.alert(title, message, buttons);
-    }
-  }
-
-  // Set document title based on active tab
-  useEffect(() => {
-    const tabLabel = TIMER_CONFIGS[activeTab].label;
-    const sessionType = mode === "work" ? "Focus" : isLongBreak ? "Long Break" : "Break";
-    const sessionCountText = workSessionCount > 0 ? ` - Session ${workSessionCount}` : "";
-    
-    // Update the document title
-    document.title = `PomoPower | ${tabLabel} - ${sessionType}${sessionCountText}`;
-  }, [activeTab, mode, workSessionCount]);
-
   return (
-    <StripeProvider
-      publishableKey={Platform.OS !== 'web' ? stripePublishableKey : ''}
-      merchantIdentifier={Platform.OS === 'ios' ? "merchant.com.yourcompany.pomopower" : undefined}
-    >
-      <View style={styles.container}>
+    <View style={styles.container}>
       {/* Tab Navigation */}
-
       <Text style={styles.title}>PomoPower</Text>
-      
+
       <View style={styles.tabContainer}>
         {Object.keys(TIMER_CONFIGS).map((tabKey) => (
           <TouchableOpacity
@@ -406,44 +372,46 @@ export default function App() {
 
       {/* Donate Button */}
       <View style={{ marginTop: 20 }}>
-        <DonateButton />
+        <TouchableOpacity 
+          style={{ backgroundColor: "#27ae60", paddingHorizontal: 22, paddingVertical: 12, borderRadius: 10 }}
+          onPress={() => window.open('https://donate.stripe.com/test_7sY7sLaOlbHy9i12B6cfK02', '_blank')}
+        >
+          <Text style={{ color: "#fff", fontWeight: "600" }}>Support Us</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Timer Info */}
       <Text style={styles.hint}>{getTimerInfo()}</Text>
 
       {/* Custom Dialog Modal for Web */}
-      {Platform.OS === "web" && (
-        <Modal
-          visible={dialogVisible}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setDialogVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>{dialogTitle}</Text>
-              <Text style={styles.modalMessage}>{dialogMessage}</Text>
-              <View style={styles.modalButtons}>
-                {dialogActions.map((action, index) => (
-                  <TouchableOpacity 
-                    key={index}
-                    style={[
-                      styles.modalButton,
-                      index === 0 ? styles.modalButtonSecondary : styles.modalButtonPrimary
-                    ]}
-                    onPress={action.onPress}
-                  >
-                    <Text style={styles.modalButtonText}>{action.text}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+      <Modal
+        visible={dialogVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setDialogVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{dialogTitle}</Text>
+            <Text style={styles.modalMessage}>{dialogMessage}</Text>
+            <View style={styles.modalButtons}>
+              {dialogActions.map((action, index) => (
+                <TouchableOpacity 
+                  key={index}
+                  style={[
+                    styles.modalButton,
+                    index === 0 ? styles.modalButtonSecondary : styles.modalButtonPrimary
+                  ]}
+                  onPress={action.onPress}
+                >
+                  <Text style={styles.modalButtonText}>{action.text}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
-        </Modal>
-      )}
-      </View>
-    </StripeProvider>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -455,8 +423,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f0f0", 
     borderRadius: 12, 
     padding: 4,
-    position: "absolute",
-    top: 60,
+    // position: "absolute",
+    // top: 60,
   },
   tab: { 
     paddingHorizontal: 16, 
@@ -474,7 +442,7 @@ const styles = StyleSheet.create({
   activeTabText: { 
     color: "#fff",
   },
-  title: { fontSize: 28, fontWeight: "700", marginBottom: 8, order: 1 },
+  title: { fontSize: 28, fontWeight: "700", marginBottom: 8 },
   mode: { color: "#666", marginBottom: 6, letterSpacing: 1.5 },
   sessionCount: { 
     color: "#888", 
@@ -536,3 +504,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
