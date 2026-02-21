@@ -9,6 +9,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~3.2.3",
     "@stripe/stripe-react-native": "0.37.2",
     "expo": "^51.0.39",
     "expo-notifications": "~0.28.19",
