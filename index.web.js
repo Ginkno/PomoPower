@@ -63,7 +63,7 @@ const SimpleApp = () => {
     setCompletedCycles(tabTimers[activeTab].completedCycles);
   }, [activeTab]);
 
-  // Timer effect - uses timestamps to continue in background
+  // Timer effect - drift-compensating timer for background throttling
   useEffect(() => {
     if (running) {
       // Record the start time when timer begins
@@ -72,9 +72,12 @@ const SimpleApp = () => {
         initialTimeLeftRef.current = timeLeft;
       }
       
-      // Use RAF for smooth updates even when tab is hidden
+      // Drift-compensating timer that adapts to browser throttling
+      let expectedNextUpdate = Date.now() + 100; // Next expected update time
+      
       const updateTimer = () => {
-        const elapsedSeconds = Math.floor((Date.now() - timerStartTimeRef.current) / 1000);
+        const now = Date.now();
+        const elapsedSeconds = Math.floor((now - timerStartTimeRef.current) / 1000);
         const newTimeLeft = initialTimeLeftRef.current - elapsedSeconds;
         
         if (newTimeLeft <= 0) {
@@ -84,17 +87,30 @@ const SimpleApp = () => {
           timerStartTimeRef.current = null;
           initialTimeLeftRef.current = null;
           showTimerEndDialog();
+          return;
         } else {
           setTimeLeft(newTimeLeft);
         }
+        
+        // Calculate drift (how much we're behind schedule)
+        const drift = now - expectedNextUpdate;
+        
+        // Next timeout compensates for drift
+        // If we're running late (drift > 0), we schedule the next tick sooner
+        // If we're running early (drift < 0), we schedule the next tick later
+        const nextDelay = Math.max(10, 100 - drift); // Min 10ms to avoid busy loop
+        expectedNextUpdate = now + nextDelay;
+        
+        // Schedule next update with drift compensation
+        intervalRef.current = setTimeout(updateTimer, nextDelay);
       };
       
-      // Update every 100ms for smooth display
-      intervalRef.current = setInterval(updateTimer, 100);
+      // Initial update
+      intervalRef.current = setTimeout(updateTimer, 100);
     } else {
       // Clear the timer when paused
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+        clearTimeout(intervalRef.current);
         intervalRef.current = null;
       }
       // Keep the timestamps so we can resume later
@@ -102,7 +118,7 @@ const SimpleApp = () => {
     
     return () => {
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+        clearTimeout(intervalRef.current);
         intervalRef.current = null;
       }
     };
