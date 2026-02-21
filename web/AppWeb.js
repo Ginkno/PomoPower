@@ -27,9 +27,9 @@ export default function AppWeb() {
 
   // Store timer state for each tab
   const [tabTimers, setTabTimers] = useState({
-    pomodoro: { timeLeft: TIMER_CONFIGS.pomodoro.work, mode: "work", workSessionCount: 0 },
-    shorterDoro: { timeLeft: 15 * 60, mode: "work", workSessionCount: 0 },
-    longerDoro: { timeLeft: 45 * 60, mode: "work", workSessionCount: 0 },
+    pomodoro: { timeLeft: TIMER_CONFIGS.pomodoro.work, mode: "work", workSessionCount: 1 },
+    shorterDoro: { timeLeft: 15 * 60, mode: "work", workSessionCount: 1 },
+    longerDoro: { timeLeft: 45 * 60, mode: "work", workSessionCount: 1 },
   });
   
   // Use the active tab's timer values
@@ -38,6 +38,8 @@ export default function AppWeb() {
   const [workSessionCount, setWorkSessionCount] = useState(tabTimers[activeTab].workSessionCount);
   const [running, setRunning] = useState(false);
   const intervalRef = useRef(null);
+  const timerStartTimeRef = useRef(null); // Timestamp when timer was started
+  const initialTimeLeftRef = useRef(null); // Time left when timer was started
   
   // Custom dialog state
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -49,63 +51,74 @@ export default function AppWeb() {
   useEffect(() => {
     // hide splash after first render
     SplashScreen.hideAsync().catch(() => {});
-    
-    // Add visibility change listener to pause timer when user leaves the app
-    const handleVisibilityChange = () => {
-      if (document.hidden && running) {
-        // User switched away from the app and timer is running - pause it
-        setRunning(false);
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [running]);
+  }, []);
 
-  // Handle tab changes - update UI with stored tab timer values
+  // Handle tab changes - load the saved state for that tab without stopping timer
   useEffect(() => {
-    // Stop the timer if it's running when changing tabs
-    if (running) {
-      setRunning(false);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    }
-    
     // Load the saved time, mode and session count for this tab
     setTimeLeft(tabTimers[activeTab].timeLeft);
     setMode(tabTimers[activeTab].mode);
     setWorkSessionCount(tabTimers[activeTab].workSessionCount);
   }, [activeTab]);
 
-  // Timer effect
+  // Timer effect - drift-compensating timer for background throttling
   useEffect(() => {
     if (running) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft(t => {
-          if (t <= 1) {
-            // end of session
-            clearInterval(intervalRef.current);
-            setRunning(false);
-            
-            // Show the end of session dialog
-            showTimerEndDialog();
-            
-            return 0;
-          }
-          return t - 1;
-        });
-      }, 1000);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+      // Record the start time when timer begins
+      if (!timerStartTimeRef.current) {
+        timerStartTimeRef.current = Date.now();
+        initialTimeLeftRef.current = timeLeft;
       }
+      
+      // Drift-compensating timer that adapts to browser throttling
+      let expectedNextUpdate = Date.now() + 100; // Next expected update time
+      
+      const updateTimer = () => {
+        const now = Date.now();
+        const elapsedSeconds = Math.floor((now - timerStartTimeRef.current) / 1000);
+        const newTimeLeft = initialTimeLeftRef.current - elapsedSeconds;
+        
+        if (newTimeLeft <= 0) {
+          // Timer finished
+          setTimeLeft(0);
+          setRunning(false);
+          timerStartTimeRef.current = null;
+          initialTimeLeftRef.current = null;
+          showTimerEndDialog();
+          return;
+        } else {
+          setTimeLeft(newTimeLeft);
+        }
+        
+        // Calculate drift (how much we're behind schedule)
+        const drift = now - expectedNextUpdate;
+        
+        // Next timeout compensates for drift
+        // If we're running late (drift > 0), we schedule the next tick sooner
+        // If we're running early (drift < 0), we schedule the next tick later
+        const nextDelay = Math.max(10, 100 - drift); // Min 10ms to avoid busy loop
+        expectedNextUpdate = now + nextDelay;
+        
+        // Schedule next update with drift compensation
+        intervalRef.current = setTimeout(updateTimer, nextDelay);
+      };
+      
+      // Initial update
+      intervalRef.current = setTimeout(updateTimer, 100);
+    } else {
+      // Clear the timer when paused
+      if (intervalRef.current) {
+        clearTimeout(intervalRef.current);
+        intervalRef.current = null;
+      }
+      // Keep the timestamps so we can resume later
     }
+    
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearTimeout(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [running]);
 
@@ -286,14 +299,11 @@ export default function AppWeb() {
     const breakMin = Math.floor(currentConfig.break / 60);
     const longBreakMin = Math.floor(currentConfig.longBreak / 60);
     
-    let infoText = `${currentConfig.label}: ${workMin}min work / ${breakMin}min break`;
-    
-    // Add long break info
-    infoText += ` / ${longBreakMin}min long break`;
+    let infoText = `${workMin} min work\n${breakMin} min break\n${longBreakMin} min long break`;
     
     // Add current session count
     if (workSessionCount > 0) {
-      infoText += ` (Session ${workSessionCount})`;
+      infoText += `\n(Session ${workSessionCount})`;
     }
     
     return infoText;
