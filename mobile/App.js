@@ -55,6 +55,8 @@ export default function App() {
   const [workSessionCount, setWorkSessionCount] = useState(tabTimers[activeTab].workSessionCount);
   const [running, setRunning] = useState(false);
   const intervalRef = useRef(null);
+  const timerStartTimeRef = useRef(null); // Timestamp when timer was started
+  const initialTimeLeftRef = useRef(null); // Time left when timer was started
   
   // Custom dialog state
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -68,47 +70,56 @@ export default function App() {
     SplashScreen.hideAsync().catch(() => {});
   }, []);
 
-  // Handle tab changes - update UI with stored tab timer values
+  // Handle tab changes - load the saved state for that tab without stopping timer
   useEffect(() => {
-    // Stop the timer if it's running when changing tabs
-    if (running) {
-      setRunning(false);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    }
-    
     // Load the saved time, mode and session count for this tab
     setTimeLeft(tabTimers[activeTab].timeLeft);
     setMode(tabTimers[activeTab].mode);
     setWorkSessionCount(tabTimers[activeTab].workSessionCount);
   }, [activeTab]);
 
-  // Timer effect
+  // Timer effect - uses timestamps to continue in background
   useEffect(() => {
     if (running) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft(t => {
-          if (t <= 1) {
-            // end of session
-            clearInterval(intervalRef.current);
-            setRunning(false);
-            
-            // Show the end of session dialog
-            showTimerEndDialog();
-            
-            return 0;
-          }
-          return t - 1;
-        });
-      }, 1000);
+      // Record the start time when timer begins
+      if (!timerStartTimeRef.current) {
+        timerStartTimeRef.current = Date.now();
+        initialTimeLeftRef.current = timeLeft;
+      }
+      
+      // Use interval for updates even when app is backgrounded
+      const updateTimer = () => {
+        const elapsedSeconds = Math.floor((Date.now() - timerStartTimeRef.current) / 1000);
+        const newTimeLeft = initialTimeLeftRef.current - elapsedSeconds;
+        
+        if (newTimeLeft <= 0) {
+          // Timer finished
+          setTimeLeft(0);
+          setRunning(false);
+          timerStartTimeRef.current = null;
+          initialTimeLeftRef.current = null;
+          showTimerEndDialog();
+        } else {
+          setTimeLeft(newTimeLeft);
+        }
+      };
+      
+      // Update every 100ms for smooth display
+      intervalRef.current = setInterval(updateTimer, 100);
     } else {
+      // Clear the timer when paused
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
+      // Keep the timestamps so we can resume later
     }
+    
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [running]);
 
@@ -215,6 +226,9 @@ export default function App() {
   function toggleStartPause() {
     // request notification permission when we start for first time
     if (!running) {
+      // Starting the timer - reset timestamp tracking
+      timerStartTimeRef.current = null;
+      initialTimeLeftRef.current = null;
       registerForPushNotificationsAsync().catch(() => {});
     }
     setRunning(r => !r);

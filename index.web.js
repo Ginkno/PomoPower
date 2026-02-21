@@ -29,6 +29,8 @@ const SimpleApp = () => {
   const [completedCycles, setCompletedCycles] = useState(tabTimers[activeTab].completedCycles);
   const [running, setRunning] = useState(false);
   const intervalRef = useRef(null);
+  const timerStartTimeRef = useRef(null); // Timestamp when timer was started
+  const initialTimeLeftRef = useRef(null); // Time left when timer was started
   
   // Dialog state for end of session
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -52,16 +54,8 @@ const SimpleApp = () => {
   // Determine if the current break is a long break
   const isLongBreak = mode === "break" && workSessionCount % 4 === 0 && workSessionCount > 0;
 
-  // Handle tab changes - load the saved state for that tab
+  // Handle tab changes - load the saved state for that tab without stopping timer
   useEffect(() => {
-    // Stop the timer if it's running when changing tabs
-    if (running) {
-      setRunning(false);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    }
-    
     // Load the saved state for the new tab
     setTimeLeft(tabTimers[activeTab].timeLeft);
     setMode(tabTimers[activeTab].mode);
@@ -69,46 +63,48 @@ const SimpleApp = () => {
     setCompletedCycles(tabTimers[activeTab].completedCycles);
   }, [activeTab]);
 
-  // Visibility change listener to pause timer when user leaves the app
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && running) {
-        // User switched away from the app and timer is running - pause it
-        setRunning(false);
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [running]);
-
-  // Timer effect
+  // Timer effect - uses timestamps to continue in background
   useEffect(() => {
     if (running) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft(t => {
-          if (t <= 1) {
-            clearInterval(intervalRef.current);
-            setRunning(false);
-            
-            // Show dialog instead of auto-transitioning
-            showTimerEndDialog();
-            
-            return 0;
-          }
-          return t - 1;
-        });
-      }, 1000);
+      // Record the start time when timer begins
+      if (!timerStartTimeRef.current) {
+        timerStartTimeRef.current = Date.now();
+        initialTimeLeftRef.current = timeLeft;
+      }
+      
+      // Use RAF for smooth updates even when tab is hidden
+      const updateTimer = () => {
+        const elapsedSeconds = Math.floor((Date.now() - timerStartTimeRef.current) / 1000);
+        const newTimeLeft = initialTimeLeftRef.current - elapsedSeconds;
+        
+        if (newTimeLeft <= 0) {
+          // Timer finished
+          setTimeLeft(0);
+          setRunning(false);
+          timerStartTimeRef.current = null;
+          initialTimeLeftRef.current = null;
+          showTimerEndDialog();
+        } else {
+          setTimeLeft(newTimeLeft);
+        }
+      };
+      
+      // Update every 100ms for smooth display
+      intervalRef.current = setInterval(updateTimer, 100);
     } else {
+      // Clear the timer when paused
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
+      // Keep the timestamps so we can resume later
     }
+    
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [running, mode, currentConfig]);
 
@@ -121,6 +117,11 @@ const SimpleApp = () => {
   }, [timeLeft, mode, workSessionCount, completedCycles, activeTab]);
 
   function toggleStartPause() {
+    if (!running) {
+      // Starting the timer - reset timestamp tracking
+      timerStartTimeRef.current = null;
+      initialTimeLeftRef.current = null;
+    }
     setRunning(r => !r);
   }
 
