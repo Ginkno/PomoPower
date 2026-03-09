@@ -78,6 +78,14 @@ export default function App() {
     setWorkSessionCount(tabTimers[activeTab].workSessionCount);
   }, [activeTab]);
 
+  // Reset timer refs when mode changes (for mode transitions)
+  useEffect(() => {
+    // Always reset refs when mode changes, regardless of running state
+    // This ensures each new session starts with a fresh timer
+    timerStartTimeRef.current = null;
+    initialTimeLeftRef.current = null;
+  }, [mode]);
+
   // Timer effect - drift-compensating timer for background throttling
   useEffect(() => {
     if (running) {
@@ -177,13 +185,23 @@ export default function App() {
             setDialogVisible(false);
             setMode("break");
             
+            let breakDuration;
             if (newCount % 3 === 0) {
               // 3rd work session completed - use long break
-              setTimeLeft(currentConfig.longBreak);
+              breakDuration = currentConfig.longBreak;
+              setTimeLeft(breakDuration);
             } else {
               // Regular break
-              setTimeLeft(currentConfig.break);
+              breakDuration = currentConfig.break;
+              setTimeLeft(breakDuration);
             }
+            
+            // Clear refs before resuming so timer uses new duration
+            timerStartTimeRef.current = null;
+            initialTimeLeftRef.current = null;
+            
+            // Auto-resume timer for break
+            setRunning(true);
           }
         }
       ]);
@@ -216,6 +234,13 @@ export default function App() {
             setDialogVisible(false);
             setMode("work");
             setTimeLeft(currentConfig.work);
+            
+            // Clear refs before resuming so timer uses new duration
+            timerStartTimeRef.current = null;
+            initialTimeLeftRef.current = null;
+            
+            // Auto-resume timer for work
+            setRunning(true);
           }
         }
       ]);
@@ -227,15 +252,21 @@ export default function App() {
 
   async function sendNotification(title, body) {
     try {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: title,
-          body: body,
-        },
-        trigger: null,
-      });
+      // Notifications are not fully supported in Expo Go for SDK 53+
+      // This is a best-effort attempt and won't block timer functionality
+      if (Platform.OS !== 'web') {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: title,
+            body: body,
+          },
+          trigger: null,
+        });
+      }
     } catch (e) {
-      console.warn("Notification error", e);
+      // Silently fail - this won't affect timer functionality
+      // Notifications may not be available in Expo Go
+      console.log("Notification not available in Expo Go for SDK 54+");
     }
   }
 
